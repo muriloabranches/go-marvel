@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -18,7 +19,6 @@ type MarvelClient struct {
 	PrivateKey string
 	Timestamp  int64
 	Limit      int
-	Offset     int
 	Hash       string
 }
 
@@ -32,7 +32,6 @@ func NewMarvelClient(baseURL, publicKey, privateKey string) *MarvelClient {
 		PrivateKey: privateKey,
 		Timestamp:  ts,
 		Limit:      100,
-		Offset:     0,
 		Hash:       hash,
 	}
 }
@@ -69,43 +68,46 @@ type Response struct {
 }
 
 func (mc *MarvelClient) GetAllCharacters() ([]*CharacterClientResponse, error) {
-	url := mc.GenerateURL()
-	total := mc.Limit
-
 	var responses []*CharacterClientResponse
-	for mc.Offset < total {
-		resp, err := request(url)
-		if err != nil {
-			return nil, err
-		}
 
-		total = resp.Data.Total
-		mc.Offset += resp.Data.Count
-
-		for _, r := range resp.Data.Results {
-			if r.Comics.Available == 0 {
-				continue
-			}
-
-			if strings.Contains(r.Thumbnail.Path, "image_not_available") {
-				continue
-			}
-
-			if r.Thumbnail.Extension != "jpg" {
-				continue
-			}
-
-			responses = append(responses, NewCharacterClientResponse(r.Name, r.Description, strconv.Itoa(r.ID), resp.AttributionText, fmt.Sprintf("%s.%s", r.Thumbnail.Path, r.Thumbnail.Extension)))
-		}
-
-		url = mc.GenerateURL()
+	offset := 0
+	url := mc.GenerateURL(offset)
+	resp, err := request(url)
+	if err != nil {
+		return nil, err
 	}
+
+	total := resp.Data.Total
+	responses = append(responses, convertToClientResponse(resp.Data, resp.AttributionText)...)
+
+	offset += mc.Limit
+	mu := sync.Mutex{}
+	wg := sync.WaitGroup{}
+
+	for i := offset; i <= total; i += mc.Limit {
+		wg.Add(1)
+		url := mc.GenerateURL(i)
+
+		go func() {
+			defer wg.Done()
+
+			resp, err := request(url)
+			if err != nil {
+				fmt.Println(err)
+			}
+
+			mu.Lock()
+			responses = append(responses, convertToClientResponse(resp.Data, resp.AttributionText)...)
+			mu.Unlock()
+		}()
+	}
+	wg.Wait()
 
 	return responses, nil
 }
 
-func (mc *MarvelClient) GenerateURL() string {
-	url := fmt.Sprintf("%s/characters?ts=%d&apikey=%s&hash=%s&limit=%d&offset=%d", mc.BaseURL, mc.Timestamp, mc.PublicKey, mc.Hash, mc.Limit, mc.Offset)
+func (mc *MarvelClient) GenerateURL(offset int) string {
+	url := fmt.Sprintf("%s/characters?ts=%d&apikey=%s&hash=%s&limit=%d&offset=%d", mc.BaseURL, mc.Timestamp, mc.PublicKey, mc.Hash, mc.Limit, offset)
 	return url
 }
 
@@ -137,4 +139,25 @@ func request(url string) (*Response, error) {
 	}
 
 	return &response, nil
+}
+
+func convertToClientResponse(data Data, attributionText string) []*CharacterClientResponse {
+	var responses []*CharacterClientResponse
+	for _, r := range data.Results {
+		if r.Comics.Available == 0 {
+			continue
+		}
+
+		if strings.Contains(r.Thumbnail.Path, "image_not_available") {
+			continue
+		}
+
+		if r.Thumbnail.Extension != "jpg" {
+			continue
+		}
+
+		responses = append(responses, NewCharacterClientResponse(r.Name, r.Description, strconv.Itoa(r.ID), attributionText, fmt.Sprintf("%s.%s", r.Thumbnail.Path, r.Thumbnail.Extension)))
+	}
+
+	return responses
 }
