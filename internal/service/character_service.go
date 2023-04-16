@@ -33,6 +33,20 @@ func NewCreateCharacterInput(name, description, clientID, copyright, imageURL st
 	}
 }
 
+type CharacterOutput struct {
+	ID       string
+	Name     string
+	ImageURL string
+}
+
+func NewCharacterOutput(id, name, imageURL string) *CharacterOutput {
+	return &CharacterOutput{
+		ID:       id,
+		Name:     name,
+		ImageURL: imageURL,
+	}
+}
+
 func (cs *CharacterService) Create(input *CreateCharacterInput) error {
 	match := entity.NewCharacter(input.Name, input.Description, input.ClientID, input.Copyright, input.ImageURL)
 	err := cs.CharacterStore.Create(match)
@@ -41,4 +55,18 @@ func (cs *CharacterService) Create(input *CreateCharacterInput) error {
 	}
 
 	return nil
+}
+
+func (cs *CharacterService) GetAll() ([]*CharacterOutput, error) {
+	characters, err := cs.CharacterStore.GetAll()
+	if err != nil {
+		return nil, err
+	}
+
+	var output []*CharacterOutput
+	for _, c := range characters {
+		output = append(output, NewCharacterOutput(c.ID, c.Name, c.ImageURL))
+	}
+
+	return output, nil
 }

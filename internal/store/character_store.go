@@ -33,7 +33,7 @@ func (cs *CharacterStore) Create(c *entity.Character) error {
 	return nil
 }
 
-func (cs *CharacterStore) GetAll(date string) ([]*entity.Character, error) {
+func (cs *CharacterStore) GetAll() ([]*entity.Character, error) {
 	query := "SELECT id, name, description, client_id, copyright, image_url, is_active FROM characters"
 
 	stmt, err := cs.DB.Prepare(query)
@@ -42,7 +42,7 @@ func (cs *CharacterStore) GetAll(date string) ([]*entity.Character, error) {
 	}
 	defer stmt.Close()
 
-	rows, err := stmt.Query(date)
+	rows, err := stmt.Query()
 	if err != nil {
 		return nil, err
 	}

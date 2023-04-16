@@ -2,19 +2,14 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
+	"time"
 
-	"github.com/MuriloAbranches/go-marvel/internal/client"
 	"github.com/MuriloAbranches/go-marvel/internal/service"
 	"github.com/MuriloAbranches/go-marvel/internal/store"
 	"github.com/MuriloAbranches/go-marvel/internal/worker"
 	_ "github.com/mattn/go-sqlite3"
-)
-
-const (
-	baseURL    = "http://gateway.marvel.com/v1/public/"
-	publicKey  = ""
-	privateKey = ""
 )
 
 func main() {
@@ -23,15 +18,26 @@ func main() {
 		log.Fatal(err)
 	}
 	db.Exec(`CREATE TABLE IF NOT EXISTS characters (id TEXT PRIMARY KEY, name TEXT, description TEXT, client_id TEXT UNIQUE, 
-		copyright TEXT, image_url TEXT, is_active BOOLEAN, created_at date, updated_at date)`)
+		copyright TEXT, image_url TEXT, is_active BOOLEAN, created_at DATE, updated_at DATE)`)
 
-	store := store.NewCharacterStore(db)
-	mc := client.NewMarvelClient(baseURL, publicKey, privateKey)
-	cs := service.NewCharacterService(store)
+	db.Exec(`CREATE TABLE IF NOT EXISTS cards (id TEXT PRIMARY KEY, name TEXT, model TEXT, character_id TEXT, 
+		image_url TEXT, power INTEGER, is_active BOOLEAN, created_at DATE, updated_at DATE)`)
 
-	w := worker.NewSaveCharactersWorker(mc, cs)
+	start := time.Now()
+
+	characterStore := store.NewCharacterStore(db)
+	cardStore := store.NewCardStore(db)
+
+	characterService := service.NewCharacterService(characterStore)
+	cardService := service.NewCardService(cardStore)
+
+	w := worker.NewCreateCardsWorker(cardService, characterService)
+
 	err = w.Execute()
 	if err != nil {
 		log.Fatal(err)
 	}
+	elapsed := time.Since(start)
+
+	fmt.Printf("Tempo de execução: %s\n", elapsed)
 }
