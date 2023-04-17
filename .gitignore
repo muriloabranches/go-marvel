@@ -1,3 +1,5 @@
 /bin
 /data
 .env
+**/coverage.html
+**/coverage.out
